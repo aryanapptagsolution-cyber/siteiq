@@ -17,6 +17,7 @@ interface FilterState {
     toggleViewportFilter: () => void;
     toggleShowGated: () => void;
     setPage: (page: number) => void;
+    setPageSize: (size: number) => void;
     setSortBy: (col: string, dir: 'asc' | 'desc') => void;
     resetFilters: () => void;
 }
@@ -41,6 +42,7 @@ export const useFilterStore = create<FilterState>((set) => ({
     toggleViewportFilter: () => set((s) => ({ viewportFilter: !s.viewportFilter })),
     toggleShowGated: () => set((s) => ({ showGated: !s.showGated })),
     setPage: (page) => set({ page }),
+    setPageSize: (pageSize) => set({ pageSize, page: 1 }),
     setSortBy: (col, dir) => set({ sortBy: col, sortDir: dir, page: 1 }),
     resetFilters: () => set(DEFAULTS),
 }));

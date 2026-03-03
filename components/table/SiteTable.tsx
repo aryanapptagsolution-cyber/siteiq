@@ -8,33 +8,26 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useRef } from 'react';
 import { Site } from '@/types/site';
 import { FACTOR_LABELS } from '@/types/site';
-import { getScoreColorClass, getScoreBgClass, getBucketColorClass, getBucketLabel, getScoreBarColor } from '@/utils/scoreColor';
+import { getScoreColorClass, getBucketColorClass, getBucketLabel, getScoreBarColor } from '@/utils/scoreColor';
 import { usePermissions } from '@/hooks/usePermissions';
 import { WeightConfig } from '@/types/scoring';
-import { computeCompositeScore } from '@/utils/normalizeWeights';
-import { ArrowUpDown, Eye, Lock, Star } from 'lucide-react';
+import { ArrowUpDown, Eye, Lock, Star, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useFilterStore } from '@/store/filterStore';
 
 interface Props {
     sites: Site[];
     normalizedWeights: WeightConfig;
+    isLoading?: boolean;
+    total?: number;
 }
 
-export default function SiteTable({ sites, normalizedWeights }: Props) {
+export default function SiteTable({ sites, normalizedWeights, isLoading, total }: Props) {
     const { can } = usePermissions();
     const [sorting, setSorting] = useState<SortingState>([{ id: 'compositeScore', desc: true }]);
     const parentRef = useRef<HTMLDivElement>(null);
-
-    // Recompute composite scores client-side from current weights
-    const recomputedSites = useMemo(() =>
-        sites.map((site) => ({
-            ...site,
-            compositeScore: computeCompositeScore(site.factorScores as unknown as Record<string, number>, normalizedWeights),
-        }))
-            .sort((a, b) => b.compositeScore - a.compositeScore)
-            .map((s, i) => ({ ...s, rank: i + 1 })),
-        [sites, normalizedWeights]
-    );
+    const pageSize = useFilterStore((s) => s.pageSize);
+    const setPageSize = useFilterStore((s) => s.setPageSize);
 
     const columns = useMemo<ColumnDef<Site>[]>(() => [
         {
@@ -102,7 +95,7 @@ export default function SiteTable({ sites, normalizedWeights }: Props) {
                     <div className="space-y-0.5">
                         {(Object.entries(scores) as [keyof typeof FACTOR_LABELS, number][]).slice(0, 5).map(([k, v]) => (
                             <div key={k} className="flex items-center gap-1.5">
-                                <span className="text-[9px] text-slate-400 w-14 truncate">{FACTOR_LABELS[k]}</span>
+                                <span className="text-[9px] text-slate-400 w-14 truncate">{FACTOR_LABELS[k] ?? k}</span>
                                 <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                                     <div className="h-full rounded-full" style={{ width: `${v}%`, backgroundColor: getScoreBarColor(v) }} />
                                 </div>
@@ -175,8 +168,31 @@ export default function SiteTable({ sites, normalizedWeights }: Props) {
         },
     ], [can, normalizedWeights]);
 
+    // RECALCULATE SCORES & RANKS LOCALLY based on current weights
+    // This makes the sliders instantly update the table ordering without an API call
+    const liveSites = useMemo(() => {
+        if (!sites || sites.length === 0) return [];
+
+        return [...sites].map(site => {
+            // Re-calculate score using current slider weights
+            let score = 0;
+            for (const [key, val] of Object.entries(site.factorScores)) {
+                const w = normalizedWeights[key as keyof WeightConfig] || 0;
+                score += val * (w / 100);
+            }
+            return { ...site, compositeScore: score };
+        }).sort((a, b) => {
+            // Re-sort descending by new score
+            return b.compositeScore - a.compositeScore;
+        }).map((site, index) => ({
+            // Re-assign rank based on new sort order
+            ...site,
+            rank: index + 1
+        }));
+    }, [sites, normalizedWeights]);
+
     const table = useReactTable({
-        data: recomputedSites,
+        data: liveSites,
         columns,
         state: { sorting },
         onSortingChange: setSorting,
@@ -197,61 +213,86 @@ export default function SiteTable({ sites, normalizedWeights }: Props) {
     return (
         <div className="flex flex-col h-full bg-white rounded-2xl shadow-xl overflow-hidden">
             {/* Table header */}
-            <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2 shrink-0">
-                <span className="text-xs text-slate-500">Showing {rows.length} sites</span>
-                <div className="flex-1" />
+            <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-4">
+                    <span className="text-xs text-slate-500">
+                        {isLoading ? 'Loading...' : `Showing ${rows.length}${total !== undefined ? ` of ${total}` : ''} sites`}
+                    </span>
+                    <select
+                        value={pageSize}
+                        onChange={(e) => setPageSize(Number(e.target.value))}
+                        className="text-xs font-medium bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-700 outline-none hover:bg-slate-100 focus:bg-white transition-colors cursor-pointer"
+                    >
+                        <option value={50}>50 per page</option>
+                        <option value={100}>100 per page</option>
+                        <option value={500}>500 per page</option>
+                        <option value={10000}>All Sites</option>
+                    </select>
+                </div>
                 <span className="text-xs text-slate-400">Top 10 highlighted</span>
             </div>
 
-            {/* Column headers */}
-            <div className="border-b border-slate-100 shrink-0 overflow-x-auto">
-                {table.getHeaderGroups().map((hg) => (
-                    <div key={hg.id} className="flex" style={{ minWidth: 900 }}>
-                        {hg.headers.map((header) => (
-                            <div
-                                key={header.id}
-                                className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500 bg-slate-50"
-                                style={{ width: header.getSize(), minWidth: header.getSize() }}
-                            >
-                                {flexRender(header.column.columnDef.header, header.getContext())}
-                            </div>
-                        ))}
-                    </div>
-                ))}
-            </div>
-
-            {/* Virtualised rows */}
-            <div ref={parentRef} className="flex-1 overflow-auto">
-                <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', minWidth: 900 }}>
-                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                        const row = rows[virtualRow.index];
-                        const rank = (row.original.rank ?? virtualRow.index + 1);
-                        const isTop10 = rank <= 10;
-                        const isTop1 = rank === 1;
-                        return (
-                            <div
-                                key={row.id}
-                                className={`site-row flex absolute top-0 left-0 w-full border-b border-slate-50 hover:bg-slate-50 transition-colors ${isTop1 ? 'bg-indigo-50' : ''}`}
-                                style={{
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                    height: virtualRow.size,
-                                    borderLeft: isTop10 ? '3px solid #6366f1' : '3px solid transparent',
-                                }}
-                            >
-                                {row.getVisibleCells().map((cell) => (
+            {isLoading ? (
+                <div className="flex-1 flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 text-indigo-600 animate-spin" />
+                </div>
+            ) : rows.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
+                    No sites found. Upload data from the Admin panel.
+                </div>
+            ) : (
+                <>
+                    {/* Column headers */}
+                    <div className="border-b border-slate-100 shrink-0 overflow-x-auto">
+                        {table.getHeaderGroups().map((hg) => (
+                            <div key={hg.id} className="flex" style={{ minWidth: 900 }}>
+                                {hg.headers.map((header) => (
                                     <div
-                                        key={cell.id}
-                                        className="px-3 flex items-center"
-                                        style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}
+                                        key={header.id}
+                                        className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500 bg-slate-50"
+                                        style={{ width: header.getSize(), minWidth: header.getSize() }}
                                     >
-                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                        {flexRender(header.column.columnDef.header, header.getContext())}
                                     </div>
                                 ))}
                             </div>
-                        );
-                    })}
-                </div>
-            </div>
+                        ))}
+                    </div>
+
+                    {/* Virtualised rows */}
+                    <div ref={parentRef} className="flex-1 overflow-auto">
+                        <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', minWidth: 900 }}>
+                            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                const row = rows[virtualRow.index];
+                                const rank = (row.original.rank ?? virtualRow.index + 1);
+                                const isTop10 = rank <= 10;
+                                const isTop1 = rank === 1;
+                                return (
+                                    <div
+                                        key={row.id}
+                                        className={`site-row flex absolute top-0 left-0 w-full border-b border-slate-50 hover:bg-slate-50 transition-colors ${isTop1 ? 'bg-indigo-50' : ''}`}
+                                        style={{
+                                            transform: `translateY(${virtualRow.start}px)`,
+                                            height: virtualRow.size,
+                                            borderLeft: isTop10 ? '3px solid #6366f1' : '3px solid transparent',
+                                        }}
+                                    >
+                                        {row.getVisibleCells().map((cell) => (
+                                            <div
+                                                key={cell.id}
+                                                className="px-3 flex items-center"
+                                                style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}
+                                            >
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 }

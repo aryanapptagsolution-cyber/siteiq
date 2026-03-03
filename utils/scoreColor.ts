@@ -8,13 +8,6 @@ export function getScoreColorClass(score: number): string {
     return 'text-red-500';
 }
 
-export function getScoreBgClass(score: number): string {
-    if (score >= 80) return 'bg-emerald-500';
-    if (score >= 60) return 'bg-blue-500';
-    if (score >= 40) return 'bg-amber-500';
-    return 'bg-red-500';
-}
-
 export function getScoreBarColor(score: number): string {
     if (score >= 80) return '#10b981';
     if (score >= 60) return '#3b82f6';

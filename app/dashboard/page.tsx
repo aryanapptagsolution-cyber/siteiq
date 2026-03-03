@@ -7,12 +7,12 @@ import SiteTable from '@/components/table/SiteTable';
 import { useWeightStore } from '@/store/weightStore';
 import { useMetroStore } from '@/store/metroStore';
 import { useAuthStore } from '@/store/authStore';
-import { MOCK_SITES } from '@/utils/mockData';
-import { computeCompositeScore } from '@/utils/normalizeWeights';
+import { useSites } from '@/hooks/useSites';
+import { useFilterStore } from '@/store/filterStore';
 import { useRouter } from 'next/navigation';
-import { MapPin, Activity } from 'lucide-react';
+import { Site } from '@/types/site';
+import { MapPin, Activity, Loader2 } from 'lucide-react';
 
-// Lazy-load the map to avoid SSR issues with Mapbox
 const SiteMap = dynamic(() => import('@/components/map/SiteMap'), { ssr: false });
 
 export default function DashboardPage() {
@@ -22,29 +22,55 @@ export default function DashboardPage() {
     const selectedMetro = useMetroStore((s) => s.selectedMetro);
     const [scoringOpen, setScoringOpen] = useState(true);
 
+    const page = useFilterStore((s) => s.page);
+    const pageSize = useFilterStore((s) => s.pageSize);
+    const sortBy = useFilterStore((s) => s.sortBy);
+    const sortDir = useFilterStore((s) => s.sortDir);
+    const buckets = useFilterStore((s) => s.buckets);
+    const qualityGrades = useFilterStore((s) => s.qualityGrades);
+    const searchQuery = useFilterStore((s) => s.searchQuery);
+
     useEffect(() => {
         if (!isAuthenticated) router.replace('/login');
     }, [isAuthenticated, router]);
 
-    // Recompute sites with live weights
-    const sites = useMemo(() =>
-        MOCK_SITES.map((site) => ({
-            ...site,
-            compositeScore: computeCompositeScore(
-                site.factorScores as unknown as Record<string, number>,
-                normalizedWeights
-            ),
-        })).sort((a, b) => b.compositeScore - a.compositeScore)
-            .map((s, i) => ({ ...s, rank: i + 1 })),
-        [normalizedWeights]
-    );
+    const { sites: apiSites, total, isLoading } = useSites({
+        metro: selectedMetro?.name ? `${selectedMetro.name}, ${selectedMetro.state}` : undefined,
+        page,
+        pageSize,
+        sortBy,
+        sortDir,
+        buckets,
+        qualityGrades,
+        search: searchQuery || undefined,
+    });
+
+    // RECALCULATE SCORES LIVES BASED ON SLIDERS
+    const liveSites = useMemo(() => {
+        if (!apiSites || apiSites.length === 0) return [];
+
+        return [...apiSites].map(site => {
+            let score = 0;
+            for (const [key, val] of Object.entries(site.factorScores)) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const w = (normalizedWeights as any)[key] || 0;
+                score += val * (w / 100);
+            }
+            // Derive bucket from new score
+            const bucket = (score >= 80 ? 'immediate' : score >= 60 ? 'near-term' : score >= 40 ? 'long-term' : 'gated') as Site['bucket'];
+            return { ...site, compositeScore: score, bucket };
+        }).sort((a, b) => b.compositeScore - a.compositeScore)
+            .map((site, index) => ({ ...site, rank: index + 1 }));
+    }, [apiSites, normalizedWeights]);
 
     const stats = useMemo(() => ({
-        total: sites.length,
-        topScore: sites[0]?.compositeScore.toFixed(1) ?? '—',
-        avgScore: (sites.reduce((s, x) => s + x.compositeScore, 0) / sites.length).toFixed(1),
-        immediate: sites.filter((s) => s.bucket === 'immediate').length,
-    }), [sites]);
+        total: liveSites.length,
+        topScore: liveSites[0]?.compositeScore?.toFixed(1) ?? '—',
+        avgScore: liveSites.length > 0
+            ? (liveSites.reduce((s, x) => s + x.compositeScore, 0) / liveSites.length).toFixed(1)
+            : '—',
+        immediate: liveSites.filter((s) => s.bucket === 'immediate').length,
+    }), [liveSites]);
 
     if (!isAuthenticated) return null;
 
@@ -60,21 +86,37 @@ export default function DashboardPage() {
                 <div className="flex-1 flex flex-col overflow-hidden">
                     {/* Map section */}
                     <div className="relative" style={{ height: '55%' }}>
-                        <SiteMap sites={sites} />
-                        {/* Stat bar overlay */}
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-white/95 backdrop-blur-sm rounded-2xl px-6 py-3 shadow-xl border border-white/50 z-10">
-                            {[
-                                { label: 'Sites in View', value: stats.total },
-                                { label: 'Top Score', value: stats.topScore },
-                                { label: 'Avg Score', value: stats.avgScore },
-                                { label: 'Immediate', value: stats.immediate },
-                            ].map(({ label, value }) => (
-                                <div key={label} className="text-center">
-                                    <p className="text-[10px] uppercase tracking-widest text-slate-400">{label}</p>
-                                    <p className="text-xl font-bold text-slate-900 leading-none mt-0.5">{value}</p>
+                        {isLoading ? (
+                            <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                            </div>
+                        ) : liveSites.length === 0 ? (
+                            <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                                <div className="text-center">
+                                    <MapPin className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                    <p className="text-slate-500 font-medium">No sites found</p>
+                                    <p className="text-slate-400 text-sm mt-1">Upload site data from the Admin panel</p>
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        ) : (
+                            <SiteMap sites={liveSites} />
+                        )}
+                        {/* Stat bar overlay */}
+                        {liveSites.length > 0 && (
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-white/95 backdrop-blur-sm rounded-2xl px-6 py-3 shadow-xl border border-white/50 z-10">
+                                {[
+                                    { label: 'Sites in View', value: stats.total },
+                                    { label: 'Top Score', value: stats.topScore },
+                                    { label: 'Avg Score', value: stats.avgScore },
+                                    { label: 'Immediate', value: stats.immediate },
+                                ].map(({ label, value }) => (
+                                    <div key={label} className="text-center">
+                                        <p className="text-[10px] uppercase tracking-widest text-slate-400">{label}</p>
+                                        <p className="text-xl font-bold text-slate-900 leading-none mt-0.5">{value}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         {/* Scoring toggle button */}
                         <button
                             onClick={() => setScoringOpen(!scoringOpen)}
@@ -93,7 +135,7 @@ export default function DashboardPage() {
 
                     {/* Table section */}
                     <div className="flex-1 overflow-hidden mx-4 mb-4 mt-3">
-                        <SiteTable sites={sites} normalizedWeights={normalizedWeights} />
+                        <SiteTable sites={liveSites} normalizedWeights={normalizedWeights} isLoading={isLoading} total={total} />
                     </div>
                 </div>
             </div>

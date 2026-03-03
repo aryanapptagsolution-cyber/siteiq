@@ -2,17 +2,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-    LayoutGrid, SlidersHorizontal, Layers, Map, ShieldCheck, FileText, ChevronRight, ChevronLeft, Zap
+    LayoutGrid, Layers, FileText, ChevronRight, ChevronLeft, Zap
 } from 'lucide-react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { clsx } from 'clsx';
 
 const NAV_ITEMS = [
     { icon: LayoutGrid, label: 'Dashboard', href: '/dashboard', permission: null },
-    { icon: SlidersHorizontal, label: 'Scoring', href: '/dashboard', permission: null },
-    { icon: Layers, label: 'Presets', href: '/admin', permission: 'manage_presets' as const },
-    { icon: Map, label: 'Map View', href: '/dashboard', permission: null },
-    { icon: ShieldCheck, label: 'Admin', href: '/admin', permission: 'run_ingestion' as const },
+    { icon: Layers, label: 'Admin', href: '/admin', permission: 'run_ingestion' as const },
     { icon: FileText, label: 'Audit Log', href: '/audit', permission: 'view_audit' as const },
 ];
 

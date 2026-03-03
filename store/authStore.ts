@@ -1,13 +1,20 @@
+'use client';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { User } from '@/types/user';
+
+export interface AppUser {
+    id: string;
+    name: string;
+    email: string;
+    role: 'viewer' | 'analyst' | 'planner' | 'admin';
+    avatarInitials: string;
+}
 
 interface AuthState {
-    user: User | null;
-    token: string | null;
+    user: AppUser | null;
     isAuthenticated: boolean;
     isLoading: boolean;
-    setAuth: (user: User, token: string) => void;
+    setAuth: (user: AppUser) => void;
     clearAuth: () => void;
     setLoading: (loading: boolean) => void;
 }
@@ -16,18 +23,20 @@ export const useAuthStore = create<AuthState>()(
     persist(
         (set) => ({
             user: null,
-            token: null,
             isAuthenticated: false,
-            isLoading: false,
-            setAuth: (user, token) =>
-                set({ user, token, isAuthenticated: true, isLoading: false }),
+            isLoading: true,
+            setAuth: (user) =>
+                set({ user, isAuthenticated: true, isLoading: false }),
             clearAuth: () =>
-                set({ user: null, token: null, isAuthenticated: false }),
+                set({ user: null, isAuthenticated: false, isLoading: false }),
             setLoading: (loading) => set({ isLoading: loading }),
         }),
         {
             name: 'siteiq-auth',
-            partialize: (state) => ({ user: state.user, token: state.token, isAuthenticated: state.isAuthenticated }),
+            partialize: (state) => ({
+                user: state.user,
+                isAuthenticated: state.isAuthenticated,
+            }),
         }
     )
 );

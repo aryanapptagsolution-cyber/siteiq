@@ -4,6 +4,7 @@ import { Bell, ChevronDown, Download, LogOut, User } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { usePermissions } from '@/hooks/usePermissions';
+import { supabase } from '@/lib/supabase';
 import MetroSearch from '@/components/dashboard/MetroSearch';
 
 export default function TopNav() {
@@ -12,10 +13,34 @@ export default function TopNav() {
     const clearAuth = useAuthStore((s) => s.clearAuth);
     const { can } = usePermissions();
     const [menuOpen, setMenuOpen] = useState(false);
+    const [exporting, setExporting] = useState(false);
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
         clearAuth();
         router.push('/login');
+    };
+
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch('/api/export/csv?limit=50', {
+                headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+            });
+            if (!res.ok) throw new Error('Export failed');
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `siteiq-export-${Date.now()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch {
+            alert('Export failed');
+        } finally {
+            setExporting(false);
+        }
     };
 
     const rolePillColor: Record<string, string> = {
@@ -41,15 +66,18 @@ export default function TopNav() {
             {/* Right actions */}
             <div className="flex items-center gap-3 ml-auto">
                 {can('export_csv') && (
-                    <button className="hidden sm:flex items-center gap-2 h-9 px-4 bg-slate-900 hover:bg-slate-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors">
+                    <button
+                        onClick={handleExport}
+                        disabled={exporting}
+                        className="hidden sm:flex items-center gap-2 h-9 px-4 bg-slate-900 hover:bg-slate-700 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors"
+                    >
                         <Download className="w-3.5 h-3.5" />
-                        Export Top 50
+                        {exporting ? 'Exporting…' : 'Export Top 50'}
                     </button>
                 )}
 
                 <button className="relative w-9 h-9 flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
                     <Bell className="w-5 h-5" />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-indigo-600 rounded-full" />
                 </button>
 
                 {/* User menu */}

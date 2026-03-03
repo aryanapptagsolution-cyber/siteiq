@@ -9,7 +9,8 @@ export type AuditActionType =
     | 'site_view'
     | 'login_success'
     | 'login_failed'
-    | 'rollback';
+    | 'rollback'
+    | 'file_upload';
 
 export const ACTION_LABELS: Record<AuditActionType, string> = {
     weight_change: 'Weight Change',
@@ -23,6 +24,7 @@ export const ACTION_LABELS: Record<AuditActionType, string> = {
     login_success: 'Login',
     login_failed: 'Login Failed',
     rollback: 'Rollback',
+    file_upload: 'File Upload',
 };
 
 export const ACTION_COLORS: Record<AuditActionType, string> = {
@@ -37,6 +39,7 @@ export const ACTION_COLORS: Record<AuditActionType, string> = {
     login_success: 'bg-slate-100 text-slate-700',
     login_failed: 'bg-red-100 text-red-700',
     rollback: 'bg-orange-100 text-orange-700',
+    file_upload: 'bg-purple-100 text-purple-700',
 };
 
 export interface AuditEvent {
