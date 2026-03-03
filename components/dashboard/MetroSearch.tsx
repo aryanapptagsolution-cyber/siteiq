@@ -44,6 +44,25 @@ export default function MetroSearch() {
         ? metros.filter((m) => `${m.name} ${m.state}`.toLowerCase().includes(debouncedQuery.toLowerCase()))
         : metros;
 
+    // Auto-select first result when actively searching (without interrupting typing)
+    useEffect(() => {
+        if (debouncedQuery.length > 0 && filtered.length > 0 && open) {
+            const firstResult = filtered[0];
+            if (selectedMetro?.id !== firstResult.id) {
+                setSelectedMetro(firstResult);
+                resetFilters();
+            }
+        }
+    }, [debouncedQuery, filtered, open, selectedMetro, setSelectedMetro, resetFilters]);
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter' && open && filtered.length > 0) {
+            e.preventDefault();
+            handleSelect(filtered[0]);
+            inputRef.current?.blur();
+        }
+    };
+
     const handleSelect = (metro: Metro) => {
         setSelectedMetro(metro);
         setQuery(metro.name + ', ' + metro.state);
@@ -61,6 +80,10 @@ export default function MetroSearch() {
         const handler = (e: MouseEvent) => {
             if (!inputRef.current?.closest('.metro-search')?.contains(e.target as Node)) {
                 setOpen(false);
+                // When clicking away, if a metro is selected, format the text box to the full name 
+                // (e.g., changes "Aus" to "Austin, TX")
+                const m = useMetroStore.getState().selectedMetro;
+                if (m) setQuery(`${m.name}, ${m.state}`);
             }
         };
         document.addEventListener('mousedown', handler);
@@ -77,6 +100,7 @@ export default function MetroSearch() {
                     value={query}
                     onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
                     onFocus={() => setOpen(true)}
+                    onKeyDown={handleKeyDown}
                     placeholder={selectedMetro ? `${selectedMetro.name}, ${selectedMetro.state}` : 'Search metro or city...'}
                     className="w-full pl-10 pr-4 h-9 bg-slate-50 border border-slate-200 rounded-full text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:bg-white transition"
                 />

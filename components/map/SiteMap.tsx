@@ -4,6 +4,7 @@ import type { Map as LeafletMap, Marker as LeafletMarker } from 'leaflet';
 import { Site } from '@/types/site';
 import { getBucketMapColor } from '@/utils/scoreColor';
 import { useRouter } from 'next/navigation';
+import { useMetroStore } from '@/store/metroStore';
 
 interface Props { sites: Site[]; }
 
@@ -12,6 +13,7 @@ export default function SiteMap({ sites }: Props) {
     const containerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<LeafletMap | null>(null);
     const markersRef = useRef<LeafletMarker[]>([]);
+    const selectedMetro = useMetroStore((s) => s.selectedMetro);
 
     // Boot the map exactly once
     useEffect(() => {
@@ -43,8 +45,8 @@ export default function SiteMap({ sites }: Props) {
             });
 
             const map = L.map(containerRef.current, {
-                center: [34.0522, -118.2437],
-                zoom: 11,
+                center: selectedMetro ? [selectedMetro.center[1], selectedMetro.center[0]] : [39.8283, -98.5795],
+                zoom: selectedMetro ? 11 : 4,
                 zoomControl: true,
             });
             mapRef.current = map;
@@ -67,15 +69,27 @@ export default function SiteMap({ sites }: Props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Redraw markers when site scores change (weights updated)
+    // Redraw markers when site scores change (weights updated) and fit bounds
     useEffect(() => {
         if (!mapRef.current) return;
         (async () => {
             const L = await import('leaflet');
             renderMarkers(L, mapRef.current!);
+
+            // Auto-pan/zoom to fit the new markers or metro
+            if (sites.length > 0) {
+                const bounds = L.latLngBounds(sites.map((s) => [s.lat, s.lng]));
+                mapRef.current!.fitBounds(bounds, { padding: [50, 50], maxZoom: 13, animate: true, duration: 1 });
+            } else if (selectedMetro) {
+                const [minLng, minLat, maxLng, maxLat] = selectedMetro.bbox;
+                mapRef.current!.fitBounds([
+                    [minLat, minLng],
+                    [maxLat, maxLng]
+                ], { padding: [50, 50], maxZoom: 13, animate: true, duration: 1 });
+            }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sites]);
+    }, [sites, selectedMetro]);
 
     function renderMarkers(
         L: typeof import('leaflet'),

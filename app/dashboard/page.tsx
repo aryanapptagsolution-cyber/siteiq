@@ -85,22 +85,25 @@ export default function DashboardPage() {
                 {/* Main content */}
                 <div className="flex-1 flex flex-col overflow-hidden">
                     {/* Map section */}
-                    <div className="relative" style={{ height: '55%' }}>
-                        {isLoading ? (
-                            <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                    <div className="relative bg-slate-100 shrink-0 border-b border-slate-200 z-0" style={{ height: '55%' }}>
+                        <SiteMap sites={liveSites} />
+
+                        {isLoading && (
+                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/40 backdrop-blur-[2px]">
                                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
                             </div>
-                        ) : liveSites.length === 0 ? (
-                            <div className="w-full h-full flex items-center justify-center bg-slate-100">
-                                <div className="text-center">
+                        )}
+
+                        {!isLoading && liveSites.length === 0 && (
+                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100">
+                                <div className="text-center p-8">
                                     <MapPin className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                                     <p className="text-slate-500 font-medium">No sites found</p>
-                                    <p className="text-slate-400 text-sm mt-1">Upload site data from the Admin panel</p>
+                                    <p className="text-slate-400 text-sm mt-1">Upload site data or clear filters</p>
                                 </div>
                             </div>
-                        ) : (
-                            <SiteMap sites={liveSites} />
                         )}
+
                         {/* Stat bar overlay */}
                         {liveSites.length > 0 && (
                             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-white/95 backdrop-blur-sm rounded-2xl px-6 py-3 shadow-xl border border-white/50 z-10">
